@@ -84,6 +84,10 @@ describe('feeToken.sol', async () => {
 
         await expect(await token.balanceOf(bob)).to.be.equal(ethers.utils.parseEther('4500000'));
         await expect(await token.balanceOf(token.address)).to.be.equal(ethers.utils.parseEther('250000'));
+        console.log('Honorarium Funds:', await token.projectFunds());
+        console.log('Liquidity ETH Funds:', await ethers.utils.formatEther(await token.liquidityEthFunds()));
+        console.log('Liquidity Token Funds:', await ethers.utils.formatEther(await token.liquidityTokenFunds()));
+
     });
     it('Withdraws Project Funds correctly', async () => {
         const maxTxAmount = await ethers.utils.parseEther('5000000');
@@ -95,12 +99,14 @@ describe('feeToken.sol', async () => {
         await token.connect(adminSigner).transfer(alice, maxTxAmount);
         await token.connect(adminSigner).updatePair(bob);
         await token.connect(adminSigner).publicLaunch();
+        await token.connect(adminSigner).updateTaxForLiquidityAndProject(15, 15);
         await token.connect(aliceSigner).transfer(bob, maxTxAmount);
 
-        console.log('Project Funds:', await ethers.utils.formatEther(await token.projectFunds()))
+        console.log('Project Funds:', await ethers.utils.formatEther(await token.projectFunds()));
+
         await token.connect(adminSigner).withdrawProject();
 
-        console.log('Honorarium Wallet Balance:', await weth.balanceOf(await token.projectWallet()))
+        console.log('Project Funds after withdrawal', await ethers.utils.formatEther(await token.projectFunds()))        
     })
     it('Withdraws Liquidity Funds correctly', async () => {
         const maxTxAmount = await ethers.utils.parseEther('5000000');
@@ -114,8 +120,11 @@ describe('feeToken.sol', async () => {
         await token.connect(adminSigner).publicLaunch();
         await token.connect(aliceSigner).transfer(bob, maxTxAmount);
 
+        console.log('Liquidity Token contract balance:', await ethers.utils.formatEther(await token.liquidityTokenFunds()));
+        console.log('Liquidity ETH contract balance:', await ethers.utils.formatEther(await token.liquidityEthFunds()))
         await token.connect(adminSigner).withdrawLiquidity();
-        console.log('Liquidity Wallet Balance:', await weth.balanceOf(await token.liquidityWallet()))
+        console.log('Liquidity Token contract balance after withdrawal:', await ethers.utils.formatEther(await token.liquidityTokenFunds()));
+        console.log('Liquidity ETH contract balance after withdrawal:', await ethers.utils.formatEther(await token.liquidityEthFunds()))
         await expect(await token.balanceOf(await token.liquidityWallet())).to.be.equal(ethers.utils.parseEther('250000'))
     });
     it('Liquidity/honorarium Funds are updated correctly after withdrawal', async () => {
@@ -163,7 +172,7 @@ describe('feeToken.sol', async () => {
         await expect(await token.taxForProject()).to.be.equal(15);
     });
     it('Cannot Set Honorarium Tax for more than 15%', async () => {
-        await expect(token.updateTaxForLiquidityAndProject(10, 16)).to.be.revertedWith('Honorarium Tax cannot be more than 15%');
+        await expect(token.updateTaxForLiquidityAndProject(10, 16)).to.be.revertedWith('Project Tax cannot be more than 15%');
     });
     it('Cannot Set Liquidity Tax for more than 15%', async () => {
         await expect(token.updateTaxForLiquidityAndProject(16, 10)).to.be.revertedWith('Liquidity Tax cannot be more than 15%');
@@ -182,18 +191,11 @@ describe('feeToken.sol', async () => {
     it('Cannot set Max Wallet Amount to more than 10% of the supply:',async () => {
         await expect(token.updateMaxWalletAmount(ethers.utils.parseEther('100000001'))).to.be.revertedWith('Cannot set maxWalletAmount to more than 10% of the supply');
     });
-    it('Taxes correctly when one tax is zero', async () => {
+    it('Taxes correctly when liquidity tax is zero', async () => {
         const maxTxAmount = await ethers.utils.parseEther('5000000');
         await token.connect(adminSigner).publicLaunch();
-        await token.updateTaxForLiquidityAndProject(5, 0)
+        await token.updateTaxForLiquidityAndProject(0, 10)
         let value = ethers.utils.parseEther("1000");
-
-
-
-        await token.connect(adminSigner).withdrawLiquidity();
-        await token.connect(adminSigner).withdrawProject();
-
-
 
         await token.connect(adminSigner).test();
         const timing = await time.latest() + 100;
@@ -205,10 +207,32 @@ describe('feeToken.sol', async () => {
 
 
         console.log('-------')
-        console.log(await token.balanceOf(bob))
-        console.log(await token.projectFunds())
-        console.log(await token.liquidityEthFunds())
-        console.log(await token.liquidityTokenFunds())
+        console.log(await ethers.utils.formatEther(await token.balanceOf(bob)))
+        console.log(await ethers.utils.formatEther(await token.projectFunds()))
+        console.log(await ethers.utils.formatEther(await token.liquidityEthFunds()))
+        console.log(await ethers.utils.formatEther(await token.liquidityTokenFunds()))
+        console.log('-------')
+    });
+    it('Taxes correctly when project tax is zero', async () => {
+        const maxTxAmount = await ethers.utils.parseEther('5000000');
+        await token.connect(adminSigner).publicLaunch();
+        await token.updateTaxForLiquidityAndProject(10, 0)
+        let value = ethers.utils.parseEther("1000");
+
+        await token.connect(adminSigner).test();
+        const timing = await time.latest() + 100;
+        await router.connect(adminSigner).addLiquidityETH(token.address, value, 0, 0, token.address, timing, { value})
+        await token.connect(adminSigner).transfer(alice, maxTxAmount);
+        await token.connect(adminSigner).updatePair(bob);
+        await token.connect(aliceSigner).transfer(bob, maxTxAmount);
+
+
+
+        console.log('-------')
+        console.log(await ethers.utils.formatEther(await token.balanceOf(bob)))
+        console.log(await ethers.utils.formatEther(await token.projectFunds()))
+        console.log(await ethers.utils.formatEther(await token.liquidityEthFunds()))
+        console.log(await ethers.utils.formatEther(await token.liquidityTokenFunds()))
         console.log('-------')
     });
     it('Does not tax when tax is zero', async () => {
@@ -217,13 +241,6 @@ describe('feeToken.sol', async () => {
         await token.updateTaxForLiquidityAndProject(0, 0)
         let value = ethers.utils.parseEther("1000");
 
-
-
-        await token.connect(adminSigner).withdrawLiquidity();
-        await token.connect(adminSigner).withdrawProject();
-
-
-
         await token.connect(adminSigner).test();
         const timing = await time.latest() + 100;
         await router.connect(adminSigner).addLiquidityETH(token.address, value, 0, 0, token.address, timing, { value})
@@ -234,11 +251,12 @@ describe('feeToken.sol', async () => {
 
 
         console.log('-------')
-        console.log(await token.balanceOf(bob))
-        console.log(await token.projectFunds())
-        console.log(await token.liquidityEthFunds())
-        console.log(await token.liquidityTokenFunds())
+        console.log(await ethers.utils.formatEther(await token.balanceOf(bob)))
+        console.log(await ethers.utils.formatEther(await token.projectFunds()))
+        console.log(await ethers.utils.formatEther(await token.liquidityEthFunds()))
+        console.log(await ethers.utils.formatEther(await token.liquidityTokenFunds()))
         console.log('-------')
+        
     });
 });
 
