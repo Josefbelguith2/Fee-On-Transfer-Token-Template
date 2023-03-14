@@ -101,9 +101,14 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
                 uint256 ethAmount = _swapTokensForEth(tokensToSellEth, tokensToSellEthOut);
 
-                projectFunds += (ethAmount * (taxForProject * 75 /100) / 100) ;
-                liquidityEthFunds += (ethAmount * (taxForLiquidity * 25 / 100) / 100);
+                if (liquidityTaxAmount == 0) {
+                    projectFunds += ethAmount;
+                } else {
+                uint256 tokensToSellEthOutLiquidity = _getETHAmountsOut(liquidityTaxAmount / 2);
+                projectFunds += ethAmount - tokensToSellEthOutLiquidity ;
+                liquidityEthFunds += tokensToSellEthOutLiquidity;
                 liquidityTokenFunds += liquidityTaxAmount / 2;
+                }
             } else {
                 transferAmount = amount;
             }
